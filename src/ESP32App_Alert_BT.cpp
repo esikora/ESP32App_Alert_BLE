@@ -1,5 +1,5 @@
 /**
-    ESP32App_Alert_BT:
+    ESP32App_Alert_BLE:
     This application has been developed to run on an M5Stack Atom Lite
     ESP32 development board. It signals an alarm that is controlled by
     the Bluetooth Low Energy (BLE) service 'Immediate Alert'.
