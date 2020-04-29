@@ -44,10 +44,12 @@ const uint16_t BLE_UUID_CHARACTERISTIC_ALERT_LEVEL = 0x2A06;
 const byte PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
 const byte PIN_LEDATOM = 27; // M5Stack Atom Lite: internel Neopixel LED
 
+const byte PIN_GROVE_YELLOW = 32; // Grove Port, Yellow Cable
+
 // Status LED: color definitions
-const uint8_t COLOR_READY[3]  = {0, 20, 0}; // System state: READY
-const uint8_t COLOR_ALARM[3]  = {100, 0, 0}; // System state: ALARM
-const uint8_t COLOR_ALARM2[3] = {100, 100, 0}; // System state: ALARM
+const uint8_t COLOR_READY[3]  = {0, 10, 0}; // System state: READY
+const uint8_t COLOR_ALARM_MILD[2][3] = { {150, 150, 0}, { 75,  75, 0} }; // System state: Alarm Mild, phases 1 & 2
+const uint8_t COLOR_ALARM_HIGH[2][3] = { {200,   0, 0}, {150, 100, 0} }; // System state: Alarm High, phases 1 & 2
 
 // Number of cycles to switch between alarm colors
 const uint8_t ALARM_BLINK_NUM_CYCLES = 10;
@@ -55,11 +57,14 @@ const uint8_t ALARM_BLINK_NUM_CYCLES = 10;
 // Number of cycles after which alarm can be switched off
 const uint8_t ALARM_MIN_NUM_CYCLES = 20;
 
+// Frequency of vibration alarm signal for cases "No Alert", "Mild Alert", and "High Alert"
+const double ALARM_FREQ[3] = {0, 1, 2};
+
 // Cycle time of main loop
 const int TIME_CYCLE = 50; // ms
 
 // Type declarations
-enum State {READY = 0, ALARM = 1}; // Main system states
+enum State {READY = 0, ALARM_MILD = 1, ALARM_HIGH = 2}; // Main system states
 typedef enum State t_State;
 
 // System state
@@ -81,7 +86,7 @@ BLECharacteristic *pAlertLevelCharacteristic = 0;
 uint32_t numCyclesAlarmOn = 0;
 
 // Toggle between alarm colors
-bool ledAlarmColor2 = false;
+bool ledAlarmPhase = false;
 
 // Sets the value of the alarm level characteristic
 void setAlertLevel(uint8_t alertLevel, bool notify) {
@@ -113,44 +118,60 @@ uint8_t getAlertLevel() {
 
 // Activates the signalling of the alarm
 void activateAlarm() {
+
   if (state == t_State::READY) {
     numCyclesAlarmOn = 1;
-    state = t_State::ALARM;
-
-    ledAlarmColor2 = false;
-
-    ledAtom[0].setRGB(COLOR_ALARM[0], COLOR_ALARM[1], COLOR_ALARM[2]);
-    FastLED.show();
+    ledAlarmPhase = false;
   }
+
+  uint8_t level = getAlertLevel();
+
+  switch (level) {
+    case 1:
+      state = t_State::ALARM_MILD;
+      ledAtom[0].setRGB(COLOR_ALARM_MILD[0][0], COLOR_ALARM_MILD[0][1], COLOR_ALARM_MILD[0][2]);
+      break;
+
+    case 2:
+      state = t_State::ALARM_HIGH;
+      ledAtom[0].setRGB(COLOR_ALARM_HIGH[0][0], COLOR_ALARM_HIGH[0][1], COLOR_ALARM_HIGH[0][2]);
+      break;
+  }
+
+  // Activate alarm device
+  ledcSetup(0, ALARM_FREQ[level], 10);
+  ledcAttachPin(PIN_GROVE_YELLOW, 0);
+  ledcWrite(0, 512);
+
+  FastLED.show();
 }
 
 // Deactivates the signalling of the alarm
 void deactivateAlarm() {
-  if (state == t_State::ALARM) {
-    numCyclesAlarmOn = 0;
-    state = t_State::READY;
+  numCyclesAlarmOn = 0;
+  state = t_State::READY;
 
-    ledAlarmColor2 = false;
+  // Deactivate alarm device
+  ledcWrite(0, 0);
 
-    ledAtom[0].setRGB(COLOR_READY[0], COLOR_READY[1], COLOR_READY[2]);
-    FastLED.show();
-  }
+  // Change color of internal Led
+  ledAlarmPhase = false;
+  ledAtom[0].setRGB(COLOR_READY[0], COLOR_READY[1], COLOR_READY[2]);
+  FastLED.show();
 }
 
 // Updates the alarm output
 void updateAlarm() {
-  if (numCyclesAlarmOn % ALARM_BLINK_NUM_CYCLES == 0)
-  {
-    ledAlarmColor2 = !ledAlarmColor2;
+  if (numCyclesAlarmOn % ALARM_BLINK_NUM_CYCLES == 0) {
+    ledAlarmPhase = !ledAlarmPhase;
 
-    if (ledAlarmColor2) {
-      ledAtom[0].setRGB(COLOR_ALARM2[0], COLOR_ALARM2[1], COLOR_ALARM2[2]);
-      FastLED.show();
+    if (state == t_State::ALARM_MILD) {
+      ledAtom[0].setRGB(COLOR_ALARM_MILD[ledAlarmPhase][0], COLOR_ALARM_MILD[ledAlarmPhase][1], COLOR_ALARM_MILD[ledAlarmPhase][2]);
     }
-    else {
-      ledAtom[0].setRGB(COLOR_ALARM[0], COLOR_ALARM[1], COLOR_ALARM[2]);
-      FastLED.show();
+    else if (state == t_State::ALARM_HIGH) {
+        ledAtom[0].setRGB(COLOR_ALARM_HIGH[ledAlarmPhase][0], COLOR_ALARM_HIGH[ledAlarmPhase][1], COLOR_ALARM_HIGH[ledAlarmPhase][2]);
     }
+    FastLED.show();
   }
 
   numCyclesAlarmOn += 1;
@@ -162,6 +183,15 @@ void setup() {
 
   // Initialize the button object
   Btn.begin();
+
+  // Initialize alarm output pin
+  pinMode(PIN_GROVE_YELLOW, OUTPUT);
+
+  // configure LED PWM functionalitites
+  ledcSetup(0, 1, 10); // Channel 0, 1 Hz, 10 Bit resolution
+  
+  // attach the channel to the GPIO2 to be controlled
+  ledcAttachPin(PIN_GROVE_YELLOW, 0);
   
   // Initalize the led
   FastLED.addLeds<NEOPIXEL, PIN_LEDATOM>(ledAtom, 1);
@@ -216,32 +246,35 @@ void loop() {
   Btn.read();
 
   // Activate alarm if alert level is greater than zero, deactivate it otherwise
-  switch (state) {
-
-    case t_State::READY:
-      // Activation of alarm by BLE client
-      if (alertLevel > 0) {
-        activateAlarm();
-      }
-      break;
-
-    case t_State::ALARM:
-      // Deactivation of alarm by BLE client
-      if (alertLevel == 0) {
-        deactivateAlarm();
-      }
-      else {
-        // Deactivation of alarm by user interaction
-        if (Btn.wasReleased() && numCyclesAlarmOn >= ALARM_MIN_NUM_CYCLES)
-        {
-          setAlertLevel(0, true);
-          deactivateAlarm();
-        }
-        else {
-          // Keep signalling the alarm
-          updateAlarm();
-        }
-      }
+  if (state == t_State::READY) {
+    // Activation of alarm by BLE client
+    if (alertLevel > 0) {
+      activateAlarm();
+    }
+  }
+  else {
+    // Change of alert level from mild to high
+    if (state == t_State::ALARM_MILD && alertLevel == 2) {
+      activateAlarm();
+    }
+    // Change of alert level from high to mild
+    else if (state == t_State::ALARM_HIGH && alertLevel == 1) {
+      activateAlarm();
+    }
+    // Deactivation of alarm by BLE client
+    else if (alertLevel == 0) {
+      deactivateAlarm();
+    }
+    // Deactivation of alarm by user interaction
+    else if (Btn.wasReleased() && numCyclesAlarmOn >= ALARM_MIN_NUM_CYCLES)
+    {
+      setAlertLevel(0, true);
+      deactivateAlarm();
+    }
+    // Nothing changed, keep signalling the alarm
+    else {
+      updateAlarm();
+    }
   }
 
   delay(TIME_CYCLE);
