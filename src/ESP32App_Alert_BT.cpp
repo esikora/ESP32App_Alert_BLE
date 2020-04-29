@@ -43,8 +43,7 @@ const uint16_t BLE_UUID_CHARACTERISTIC_ALERT_LEVEL = 0x2A06;
 // HW: Pin assignments
 const byte PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
 const byte PIN_LEDATOM = 27; // M5Stack Atom Lite: internel Neopixel LED
-
-const byte PIN_GROVE_YELLOW = 32; // Grove Port, Yellow Cable
+const byte PIN_GROVE_YELLOW = 32; // M5Stack Atom Lite: grove port, yellow cable
 
 // Status LED: color definitions
 const uint8_t COLOR_READY[3]  = {0, 10, 0}; // System state: READY
