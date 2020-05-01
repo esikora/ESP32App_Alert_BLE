@@ -15,15 +15,7 @@ Libraries used (see platformio.ini):
 - BLE ESP32 Arduino
 
 ## Project Description
-
-To test the ESP32 application a BLE client is needed. For this purpose, I used the [nRF Connect for mobile app](https://www.nordicsemi.com/Software-and-tools/Development-Tools/nRF-Connect-for-mobile).
-
-Within the app the following steps are needed:
-- Tab "SCANNER": Activate "SCAN" and connect to the "ESP32_Alert" device.
-- Tab "ESP32_Alert": Unfold the "Immediate Alert" Service. Activate notifications. Write value "0x01 (Mild alert)" and "send".
-
-After the ESP32 signals the alarm, press the button in order to deactivate the alarm.
-The nRF Connect app then shows the value "No Alert" again.
+A description of this project, the hardware used, and some notes on how to test the ESP32 application using a smartphone app are provided [here](https://www.hackster.io/esikora/alarm-device-with-esp32-atom-lite-and-bluetooth-low-energy-b4887f).
 
 ## License
 
