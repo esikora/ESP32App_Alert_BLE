@@ -137,10 +137,8 @@ void activateAlarm() {
       break;
   }
 
-  // Activate alarm device
-  ledcSetup(0, ALARM_FREQ[level], 10);
-  ledcAttachPin(PIN_GROVE_YELLOW, 0);
-  ledcWrite(0, 512);
+  // Activate vibration alarm with desired frequency on PWM channel 0
+  ledcWriteTone(0, ALARM_FREQ[level]);
 
   FastLED.show();
 }
@@ -150,7 +148,7 @@ void deactivateAlarm() {
   numCyclesAlarmOn = 0;
   state = t_State::READY;
 
-  // Deactivate alarm device
+  // Deactivate vibration alarm on PWM channel 0
   ledcWrite(0, 0);
 
   // Change color of internal Led
@@ -184,12 +182,12 @@ void setup() {
   Btn.begin();
 
   // Initialize alarm output pin
-  pinMode(PIN_GROVE_YELLOW, OUTPUT);
+  //pinMode(PIN_GROVE_YELLOW, OUTPUT);
 
   // configure LED PWM functionalitites
-  ledcSetup(0, 1, 10); // Channel 0, 1 Hz, 10 Bit resolution
+  //ledcSetup(0, 1, 10); // Channel 0, 1 Hz, 10 Bit resolution
   
-  // attach the channel to the GPIO2 to be controlled
+  // Attach PWM channel 0 to the GPIO pin to be controlled
   ledcAttachPin(PIN_GROVE_YELLOW, 0);
   
   // Initalize the led
