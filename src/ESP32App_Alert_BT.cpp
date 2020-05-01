@@ -181,12 +181,6 @@ void setup() {
   // Initialize the button object
   Btn.begin();
 
-  // Initialize alarm output pin
-  //pinMode(PIN_GROVE_YELLOW, OUTPUT);
-
-  // configure LED PWM functionalitites
-  //ledcSetup(0, 1, 10); // Channel 0, 1 Hz, 10 Bit resolution
-  
   // Attach PWM channel 0 to the GPIO pin to be controlled
   ledcAttachPin(PIN_GROVE_YELLOW, 0);
   
