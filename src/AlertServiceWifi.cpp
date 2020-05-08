@@ -90,54 +90,48 @@ void AlertServiceWifi::alertServiceTask(void *pvParameters) {
                     Serial.print(numAvailable);
                     Serial.print(" bytes: ");
 
-                    int count = 0;
-                            
-                    while (numAvailable > 0) {
+                    // Store the first received value
+                    int rxValue = client.read();
+                    Serial.print(rxValue);
 
-                        int rxValue = client.read();
-                        count += 1;
-                        
+                    // Dump the remaining values to serial output
+                    for (int i = 0; i < numAvailable - 1; i++) {
                         Serial.print(' ');
-                        Serial.print(rxValue);
-                        
-                        // Interpret only the first received byte
-                        if (count == 1) {
-
-                            switch (rxValue) {
-                                case 0x00: // Set alert level to received value
-                                    pAlertService->alertLevel_ = 0;
-                                    break;
-
-                                case 0x01: // Set alert level to received value
-                                    pAlertService->alertLevel_ = 1;
-                                    break;
-
-                                case 0x02: // Set alert level to received value
-                                    pAlertService->alertLevel_ = 2;
-                                    break;
-
-                                default:
-                                    
-                                    if (rxValue < 0) {
-                                        Serial.println("RX Error");
-                                    }
-                                    else {
-                                        // Respond with current alert level
-                                        uint8_t level = pAlertService->alertLevel_;
-                                        client.write(level);
-
-                                        Serial.print("Sent 1 byte: ");
-                                        Serial.print(level);
-                                        Serial.println(" (response)");
-                                    }
-                                    break;
-                            }
-                        }
-
-                        numAvailable = client.available();
+                        Serial.print( client.read() );
                     }
 
                     Serial.println();
+                        
+                    switch (rxValue) {
+                        case 0x00: // Set alert level to received value
+                            pAlertService->alertLevel_ = 0;
+                            break;
+
+                        case 0x01: // Set alert level to received value
+                            pAlertService->alertLevel_ = 1;
+                            break;
+
+                        case 0x02: // Set alert level to received value
+                            pAlertService->alertLevel_ = 2;
+                            break;
+
+                        default:
+                            
+                            if (rxValue < 0) {
+                                Serial.println("RX Error");
+                            }
+                            else {
+                                // Respond with current alert level
+                                uint8_t level = pAlertService->alertLevel_;
+                                client.write(level);
+
+                                Serial.print("Sent 1 byte: ");
+                                Serial.print(level);
+                                Serial.println(" (response)");
+                            }
+                            break;
+                    }
+
                 }
 
                 delay(10);
@@ -145,8 +139,8 @@ void AlertServiceWifi::alertServiceTask(void *pvParameters) {
         
             client.stop();
             Serial.println("Client disconnected");
-        }
-    }
+        } // if client
 
-    delay(500);
+        delay(500);
+    } // while true
 }

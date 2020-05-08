@@ -188,25 +188,30 @@ void loop() {
   if (state == t_State::READY) {
     // Activation of alarm by BLE client
     if (alertLevel > 0) {
+      Serial.println("Alarm activation by remote client.");
       activateAlarm();
     }
   }
   else {
     // Change of alert level from mild to high
     if (state == t_State::ALARM_MILD && alertLevel == 2) {
+      Serial.println("Alert level changed by remote client: High alert.");
       activateAlarm();
     }
     // Change of alert level from high to mild
     else if (state == t_State::ALARM_HIGH && alertLevel == 1) {
+      Serial.println("Alert level changed by remote client: Mild alert.");
       activateAlarm();
     }
     // Deactivation of alarm by BLE client
     else if (alertLevel == 0) {
+      Serial.println("Alarm deactivation by remote client.");
       deactivateAlarm();
     }
     // Deactivation of alarm by user interaction
     else if (Btn.wasReleased() && numCyclesAlarmOn >= ALARM_MIN_NUM_CYCLES)
     {
+      Serial.println("Alarm deactivation by button.");
       pAlertService->setAlertLevel(0, true);
       deactivateAlarm();
     }
