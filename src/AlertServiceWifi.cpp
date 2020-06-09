@@ -115,19 +115,46 @@ void AlertServiceWifi::alertServiceTask(void *pvParameters) {
                             pAlertService->alertLevel_ = 2;
                             break;
 
+                        case 0x03: // Request alert level
+                        {
+                            // Respond with current alert level
+                            uint8_t level = pAlertService->alertLevel_;
+                            client.write(level);
+                            client.flush();
+
+                            Serial.print("Sent 1 byte: ");
+                            Serial.print(level);
+                            Serial.println(" (response)");
+                            break;
+                        }
+
+                        case 0x04: // Request id
+                        {
+                            uint64_t id64 = ESP.getEfuseMac();
+
+                            Serial.printf("ESP32 Chip ID = %04X",(uint16_t)(id64>>32)); //print High 2 bytes
+	                        Serial.printf("%08X\n",(uint32_t)id64); //print Low 4bytes.
+                            
+                            uint8_t id8[6];
+
+                            // Reverse so that id will be transmitted in Big Endian order, i.e. most significant byte first
+                            for (int i = 5; i >= 0; --i) {
+                                id8[i] = id64 & 0xFF;
+                                id64 >>= 8;
+                            }
+
+                            client.write(id8, 6);
+                            client.flush();
+                            break;
+                        }
+
                         default:
                             
                             if (rxValue < 0) {
                                 Serial.println("RX Error");
                             }
                             else {
-                                // Respond with current alert level
-                                uint8_t level = pAlertService->alertLevel_;
-                                client.write(level);
-
-                                Serial.print("Sent 1 byte: ");
-                                Serial.print(level);
-                                Serial.println(" (response)");
+                                Serial.println("Unknown request");
                             }
                             break;
                     }
