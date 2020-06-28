@@ -1,8 +1,9 @@
 /**
-    ESP32App_Alert_BLE:
+    ESP32App_AlertService:
     This application has been developed to run on an M5Stack Atom Lite
-    ESP32 development board. It signals an alarm that is controlled by
-    the Bluetooth Low Energy (BLE) service 'Immediate Alert'.
+    ESP32 development board. It signals an alarm that can be controlled
+    by either by the Bluetooth Low Energy (BLE) service 'Immediate Alert'
+    or by a WiFi TCP connection.
 
     Copyright (C) 2020 by Ernst Sikora
     
@@ -26,24 +27,22 @@
 #include <JC_Button.h>
 
 // External library: FastLED, https://github.com/FastLED/FastLED
-#include <FastLED.h> 
+#include <FastLED.h>
 
-// Library: ESP32 BLE Arduino
-#include <BLEDevice.h>
-#include <BLEUtils.h>
-#include <BLEServer.h>
-#include <BLE2902.h>
+// Include either BLE or WiFi Alert Service implementation
+#ifdef ALERT_SERVICE_WIFI
+  #include "AlertServiceWifi.h"
+  #include "WifiCredentials.h"
+#endif
 
-// UUID of Immediate Alert Service, see: https://www.bluetooth.com/specifications/gatt/services/
-const uint16_t BLE_UUID_SERVICE_IMMEDIATE_ALERT = 0x1802;
-
-// UUID of Alert Level Characteristic, see: https://www.bluetooth.com/specifications/gatt/characteristics/
-const uint16_t BLE_UUID_CHARACTERISTIC_ALERT_LEVEL = 0x2A06;
+#ifdef ALERT_SERVICE_BLE
+  #include "AlertServiceBLE.h"
+#endif
 
 // HW: Pin assignments
-const byte PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
-const byte PIN_LEDATOM = 27; // M5Stack Atom Lite: internel Neopixel LED
-const byte PIN_GROVE_YELLOW = 32; // M5Stack Atom Lite: grove port, yellow cable
+const uint8_t PIN_BUTTON = 39; // M5Stack Atom Lite: internal button
+const uint8_t PIN_LEDATOM = 27; // M5Stack Atom Lite: internel Neopixel LED
+const uint8_t PIN_GROVE_YELLOW = 32; // M5Stack Atom Lite: grove port, yellow cable
 
 // Status LED: color definitions
 const uint8_t COLOR_READY[3]  = {0, 10, 0}; // System state: READY
@@ -78,42 +77,14 @@ CRGB ledAtom[1];
 // Brightness factor for LED
 uint8_t brightness = 255;
 
-// BLE Gatt Charcteristic: Alarm Level
-BLECharacteristic *pAlertLevelCharacteristic = 0;
-
 // Number of cycles with alarm being on
 uint32_t numCyclesAlarmOn = 0;
 
 // Toggle between alarm colors
 bool ledAlarmPhase = false;
 
-// Sets the value of the alarm level characteristic
-void setAlertLevel(uint8_t alertLevel, bool notify) {
-  pAlertLevelCharacteristic->setValue(&alertLevel, 1);
-  
-  if (notify) {
-    pAlertLevelCharacteristic->notify(); // Notify client about the change
-  }
-}
-
-// Returns the value of the alert level characteristic
-uint8_t getAlertLevel() {
-  std::string data = pAlertLevelCharacteristic->getValue();
-
-  if (data.length() == 1) {
-    uint8_t alarmLevel = data[0];
-
-    if (alarmLevel >= 0 && alarmLevel <= 2) {
-      return alarmLevel;
-    }
-    else {
-      return 255; // Value error
-    }
-  }
-  else {
-    return 255; // Data length error
-  }
-}
+// Pointer to the alert service, either AlertServiceBLE or AlertServiceWifi
+AlertService *pAlertService;
 
 // Activates the signalling of the alarm
 void activateAlarm() {
@@ -123,7 +94,8 @@ void activateAlarm() {
     ledAlarmPhase = false;
   }
 
-  uint8_t level = getAlertLevel();
+  // Retrieve the current alert level from the alert service
+  uint8_t level = pAlertService->getAlertLevel();
 
   switch (level) {
     case 1:
@@ -166,7 +138,7 @@ void updateAlarm() {
       ledAtom[0].setRGB(COLOR_ALARM_MILD[ledAlarmPhase][0], COLOR_ALARM_MILD[ledAlarmPhase][1], COLOR_ALARM_MILD[ledAlarmPhase][2]);
     }
     else if (state == t_State::ALARM_HIGH) {
-        ledAtom[0].setRGB(COLOR_ALARM_HIGH[ledAlarmPhase][0], COLOR_ALARM_HIGH[ledAlarmPhase][1], COLOR_ALARM_HIGH[ledAlarmPhase][2]);
+      ledAtom[0].setRGB(COLOR_ALARM_HIGH[ledAlarmPhase][0], COLOR_ALARM_HIGH[ledAlarmPhase][1], COLOR_ALARM_HIGH[ledAlarmPhase][2]);
     }
     FastLED.show();
   }
@@ -176,7 +148,7 @@ void updateAlarm() {
 
 void setup() {
   Serial.begin(115200);
-  Serial.println("***** BLE Immediate Alert Service *****");
+  Serial.println("***** Alert Service *****");
 
   // Initialize the button object
   Btn.begin();
@@ -190,48 +162,24 @@ void setup() {
   FastLED.setBrightness(brightness);
   ledAtom[0].setRGB(COLOR_READY[0], COLOR_READY[1], COLOR_READY[2]);
   FastLED.show();
-
-  // Initialize bluetooth device
-  BLEDevice::init("ESP32_Alert");
-  BLEDevice::setPower(ESP_PWR_LVL_P9);
   
-  // Create BLE GATT server
-  BLEServer *pServer = BLEDevice::createServer();
+  // Instantiate the service according to the chosen build configuration
+#ifdef ALERT_SERVICE_WIFI
+  pAlertService = new AlertServiceWifi(WifiCredentials::SSID, WifiCredentials::PASSWORD, WifiCredentials::PORT);
+#endif
 
-  // Create BLE GATT service "Immediate Alert"
-  BLEService *pService = pServer->createService(BLE_UUID_SERVICE_IMMEDIATE_ALERT);
+#ifdef ALERT_SERVICE_BLE
+  pAlertService = new AlertServiceBLE();
+#endif
 
-  // Create BLE GATT characteristic "Alert Level"
-  pAlertLevelCharacteristic = pService->createCharacteristic(
-                                BLE_UUID_CHARACTERISTIC_ALERT_LEVEL,
-                                BLECharacteristic::PROPERTY_READ |
-                                BLECharacteristic::PROPERTY_WRITE |
-                                BLECharacteristic::PROPERTY_WRITE_NR |
-                                BLECharacteristic::PROPERTY_NOTIFY
-                              );
-
-  // Create a BLE Descriptor to support notification of client by the server
-  // see: https://www.bluetooth.com/specifications/gatt/descriptors/
-  pAlertLevelCharacteristic->addDescriptor(new BLE2902());
-
-  // Initial alert level is "No alert"
-  setAlertLevel(0, false);
-  
-  // pAlertLevelCharacteristic->setCallbacks(new AlertLevelCallback());
-  
-  // Start the service
-  pService->start();
-
-  // Start advertising
-  BLEAdvertising *pAdvertising = pServer->getAdvertising();
-  pAdvertising->addServiceUUID(BLE_UUID_SERVICE_IMMEDIATE_ALERT); // Advertise the immediate alert service
-  pAdvertising->start();
+  // Start the alert service
+  pAlertService->start();
 }
 
 void loop() {
 
-  // Retrieve the current alert level from the BLE alert level characteristic  
-  uint8_t alertLevel = getAlertLevel();
+  // Retrieve the current alert level
+  uint8_t alertLevel = pAlertService->getAlertLevel();
 
   // Read the button state
   Btn.read();
@@ -240,26 +188,31 @@ void loop() {
   if (state == t_State::READY) {
     // Activation of alarm by BLE client
     if (alertLevel > 0) {
+      Serial.println("Alarm activation by remote client.");
       activateAlarm();
     }
   }
   else {
     // Change of alert level from mild to high
     if (state == t_State::ALARM_MILD && alertLevel == 2) {
+      Serial.println("Alert level changed by remote client: High alert.");
       activateAlarm();
     }
     // Change of alert level from high to mild
     else if (state == t_State::ALARM_HIGH && alertLevel == 1) {
+      Serial.println("Alert level changed by remote client: Mild alert.");
       activateAlarm();
     }
     // Deactivation of alarm by BLE client
     else if (alertLevel == 0) {
+      Serial.println("Alarm deactivation by remote client.");
       deactivateAlarm();
     }
     // Deactivation of alarm by user interaction
     else if (Btn.wasReleased() && numCyclesAlarmOn >= ALARM_MIN_NUM_CYCLES)
     {
-      setAlertLevel(0, true);
+      Serial.println("Alarm deactivation by button.");
+      pAlertService->setAlertLevel(0, true);
       deactivateAlarm();
     }
     // Nothing changed, keep signalling the alarm

@@ -7,3 +7,4 @@
 include/README
 lib/README
 test/README
+src/WifiCredentials.cpp
